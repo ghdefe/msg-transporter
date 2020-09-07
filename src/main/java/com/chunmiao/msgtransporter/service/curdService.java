@@ -20,9 +20,9 @@ public class curdService {
     @Autowired
     private RedisTemplate redisTemplate;
 
-    private boolean updateTopFlag = true, updateAllFlag = true, updatePageFlag = true;
+    private boolean updateTopFlag = true, updateAllFlag = true;
 
-    
+
     public msgEntity topNews() {
 //        拿到绑定的键值对
         BoundValueOperations topNew = redisTemplate.boundValueOps("topNew");
@@ -40,16 +40,7 @@ public class curdService {
     }
 
     public Page<msgEntity> pageNews(int page, int size) {
-        BoundValueOperations pageNews = redisTemplate.boundValueOps("pageNews");
-
-        if (!updatePageFlag) {
-            return (Page<msgEntity>) pageNews.get();
-        } else {
-            Page<msgEntity> msgs = curdRepository.findAll(PageRequest.of(page, size, Sort.by("id").descending()));
-            pageNews.set(msgs);
-            updatePageFlag = false;
-            return msgs;
-        }
+        return curdRepository.findAll(PageRequest.of(page, size, Sort.by("id").descending()));
     }
 
     public List<msgEntity> allNews() {
