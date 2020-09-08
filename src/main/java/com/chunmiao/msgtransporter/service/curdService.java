@@ -11,6 +11,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.concurrent.Callable;
 
 @Service
 public class curdService {
@@ -20,23 +21,15 @@ public class curdService {
     @Autowired
     private RedisTemplate redisTemplate;
 
-    private boolean updateTopFlag = true, updateAllFlag = true;
+    private boolean[] flag;
+    {
+        flag = new boolean[2];  //0 updateTopFlag,1 updateAllFlag
+    }
 
 
     public msgEntity topNews() {
-//        拿到绑定的键值对
-        BoundValueOperations topNew = redisTemplate.boundValueOps("topNew");
-
-//         不需要更新时直接返回
-        if (!updateTopFlag) {
-            return (msgEntity) topNew.get();
-//            需要更新时从数据库拿值并存到redis
-        } else {
-            msgEntity top = curdRepository.findTopByOrderByIdDesc();
-            topNew.set(top);
-            updateTopFlag = false;
-            return top;
-        }
+        return saveToRedis("topNew", flag,0,
+                () -> curdRepository.findTopByOrderByIdDesc());
     }
 
     public Page<msgEntity> pageNews(int page, int size) {
@@ -44,36 +37,50 @@ public class curdService {
     }
 
     public List<msgEntity> allNews() {
-        BoundValueOperations allNews = redisTemplate.boundValueOps("updateAll");
-
-        if (!updateAllFlag) {
-            return (List<msgEntity>) allNews.get();
-        } else {
-            List<msgEntity> msgs = curdRepository.findAll();
-            allNews.set(msgs);
-            updateAllFlag = false;
-            return msgs;
-        }
+        return saveToRedis("topNew",flag,1, () -> curdRepository.findAll());
     }
 
     public msgEntity addNew(msgEntity msgEntity) {
-        updateTopFlag = false;
-        updateAllFlag = false;
-        updatePageFlag = false;
+        for (int i = 0; i < flag.length; i++) {
+            flag[i] = false;
+        }
         return curdRepository.save(msgEntity);
     }
 
     public void delNewById(Integer id) {
-        updateTopFlag = false;
-        updateAllFlag = false;
-        updatePageFlag = false;
+        for (int i = 0; i < flag.length; i++) {
+            flag[i] = false;
+        }
         curdRepository.deleteById(id);
     }
 
     public void delAllNews() {
-        updateTopFlag = false;
-        updateAllFlag = false;
-        updatePageFlag = false;
+        for (int i = 0; i < flag.length; i++) {
+            flag[i] = false;
+        }
         curdRepository.deleteAll();
+    }
+
+
+    //从redis取数据
+    <T> T saveToRedis(String s, boolean[] flag, int i,Callable<T> saveMethod) {
+        BoundValueOperations news = redisTemplate.boundValueOps(s); //拿到绑定的键值对
+        // 不需要更新时直接返回
+        if (flag[i]) {
+            System.out.println("从redis拿");
+            return  (T)news.get();
+            // 需要更新时从数据库拿值并存到redis
+        } else {
+            System.out.println("从数据库拿");
+            T msg = null;
+            try {
+                msg = saveMethod.call(); //call要从数据库中取对象，并返回T对象
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            news.set(msg);
+            flag[i] = true;
+            return msg;
+        }
     }
 }
